@@ -1,13 +1,15 @@
 #include <DRAMPower/command/Command.h>
-#include <DRAMPower/standards/lpddr5/LPDDR5.h>
+#include <DRAMPower/standards/ddr4/DDR4.h>
 #include <DRAMPower/util/json.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/fmt.h>
 #include "csv.hpp"
+#include <DRAMPower/standards/ddr4/core_calculation_DDR4.h>
+#include <DRAMPower/standards/ddr4/interface_calculation_DDR4.h>
+
 
 #include <vector>
 #include <filesystem>
 #include <string_view>
+#include <iostream>
 
 using namespace DRAMPower;
 
@@ -15,7 +17,7 @@ std::vector<Command> parse_command_list(std::string_view csv_file)
 {
 	if (!std::filesystem::exists(csv_file) || std::filesystem::is_directory(csv_file))
 	{
-		spdlog::error("MemSpec file was not found!");
+		std::cout<<"Error opening file: "<<csv_file<<std::endl;
 		exit(1);
 	}
 
@@ -26,14 +28,17 @@ std::vector<Command> parse_command_list(std::string_view csv_file)
 	format.trim({ ' ', '\t' });
 
 	csv::CSVReader reader{ csv_file, format };
-
 	for (csv::CSVRow& row : reader) { // Input iterator
 		// timestamp, command, bank, bank group, rank
-		auto timestamp = row[0].get<timestamp_t>();
-		auto cmdType = row[1].get_sv();
-		auto bank_id = row[2].get<std::size_t>();
-		std::size_t bank_group_id = 0;//row[3].get<std::size_t>();
-		std::size_t rank_id = 0;//row[4].get<std::size_t>();
+		auto cmdType = row[0].get_sv();
+		auto timestamp = row[1].get<timestamp_t>();
+		auto rank_id = row[2].get<std::size_t>();
+		auto bank_id = row[3].get<std::size_t>();
+		auto row_id = row[4].get<std::size_t>();
+		auto bank_group_id = row[5].get<std::size_t>();
+		auto column_id = row[6].get<std::size_t>();
+		// std::size_t bank_group_id = 0;//row[3].get<std::size_t>();
+		// std::size_t rank_id = 0;//row[4].get<std::size_t>();
 
 		if (cmdType == "ACT") {
 			commandList.push_back({ timestamp, CmdType::ACT, { bank_id, bank_group_id, rank_id } });
@@ -103,41 +108,25 @@ std::vector<Command> parse_command_list(std::string_view csv_file)
 int main(int argc, char *argv[])
 {
 	if (argc != 3) {
-		spdlog::error("Usage: ./CLI command_list ddr4_spec");
+		std::cout<<"Usage: "<<argv[0]<<" <command_list.csv> <memspec.json>"<<std::endl;
 		exit(1);
 	}
 
 	auto commandList = parse_command_list(argv[1]);
+	std::cout<<"Parsed "<<commandList.size()<<" commands"<<std::endl;
 
 	std::ifstream f((std::string(argv[2])));
 	if (!f.is_open()) {
-		spdlog::error("Could not open file {}", argv[2]);
+		std::cout<<"Error opening file: "<<argv[2]<<std::endl;
 		exit(1);
 	}
 
 	json data = json::parse(f);
-	MemSpecLPDDR5 lpddr5(data["memspec"]);
-	LPDDR5 ddr(lpddr5);
+	DDR4 ddr(data["memspec"]);
 
 	size_t count = 0;
 
-	std::vector<Command> testPattern = {
-			{  0, CmdType::ACT,  { 0, 0, 0}},
-			{  0, CmdType::ACT,  { 1, 0, 0}},
-			{  0, CmdType::ACT,  { 2, 0, 0}},
-			{ 15, CmdType::PRE,  { 0, 0, 0}},
-			{ 20, CmdType::REFB, { 0, 0, 0}},
-			{ 25, CmdType::PRE,  { 1, 0, 0}},
-			{ 30, CmdType::RDA,  { 2, 0, 0}},
-			{ 50, CmdType::REFB, { 2, 0, 0}},
-			{ 60, CmdType::ACT,  { 1, 0, 0}},
-			{ 80, CmdType::PRE,  { 1, 0, 0}},
-			{ 85, CmdType::REFB, { 1, 0, 0}},
-			{ 85, CmdType::REFB, { 0, 0, 0}},
-			{ 125, CmdType::END_OF_SIMULATION },
-	};
-
-	for (auto &command : testPattern) {
+	for (auto &command : commandList) {
 		ddr.doCommand(command);
 		count += 1;
 	}
@@ -148,28 +137,33 @@ int main(int argc, char *argv[])
 	std::cout << std::fixed;
 
 	for (int b = 0; b < ddr.memSpec.numberOfBanks; b++) {
-		fmt::print("{} -> ACT: {} PRE: {} RD: {}: WR:{} RDA: {} WRA: {} REF: {} BG_ACT*: {} BG_PRE_ {}\n",
-			b,
-			energy.bank_energy[b].E_act,
-			energy.bank_energy[b].E_pre,
-			energy.bank_energy[b].E_RD,
-			energy.bank_energy[b].E_WR,
-			energy.bank_energy[b].E_RDA,
-			energy.bank_energy[b].E_WRA,
-			energy.bank_energy[b].E_ref_AB,
-			energy.bank_energy[b].E_bg_act,
-			energy.bank_energy[b].E_bg_pre
-		);
+		std::cout<<b;
+		std::cout<<" ACT:"<<energy.bank_energy[b].E_act;
+		std::cout<<" PRE:"<<energy.bank_energy[b].E_pre;
+		std::cout<<" RD:"<<energy.bank_energy[b].E_RD;
+		std::cout<<" WR:"<<energy.bank_energy[b].E_WR;
+		std::cout<<" RDA:"<<energy.bank_energy[b].E_RDA;
+		std::cout<<" WRA:"<<energy.bank_energy[b].E_WRA;
+		std::cout<<" REF:"<<energy.bank_energy[b].E_ref_AB;
+		std::cout<<" BG_ACT:"<<energy.bank_energy[b].E_bg_act;
+		std::cout<<" BG_PRE_"<<energy.bank_energy[b].E_bg_pre<<std::endl;
 	}
-	fmt::print("\n");
-	fmt::print("## E_bg_act: {}\n", energy.total_energy().E_bg_act);
-	fmt::print("## E_bg_pre: {}\n", energy.total_energy().E_bg_pre);
-	fmt::print("## E_bg_act_shared: {}\n", energy.E_bg_act_shared);
-	fmt::print("## E_PDNA: {}\n", energy.E_PDNA);
-	fmt::print("## E_PDNP: {}\n", energy.E_PDNP);
-	fmt::print("\n");
-
-	fmt::print("TOTAL ENERGY: {}\n", energy.total_energy().total() + energy.E_sref + energy.E_PDNA + energy.E_PDNP);
+	std::cout<<std::endl;
+	// fmt::print("\n");
+	std::cout<<"## E_bg_act: "<<energy.total_energy().E_bg_act<<std::endl;
+	// fmt::print("## E_bg_act: {}\n", energy.total_energy().E_bg_act);
+	std::cout<<"## E_bg_pre: "<<energy.total_energy().E_bg_pre<<std::endl;
+	// fmt::print("## E_bg_pre: {}\n", energy.total_energy().E_bg_pre);
+	std::cout<<"## E_bg_act_shared: "<<energy.E_bg_act_shared<<std::endl;
+	// fmt::print("## E_bg_act_shared: {}\n", energy.E_bg_act_shared);
+	std::cout<<"## E_PDNA: "<<energy.E_PDNA<<std::endl;
+	// fmt::print("## E_PDNA: {}\n", energy.E_PDNA);
+	std::cout<<"## E_PDNP: "<<energy.E_PDNP<<std::endl;
+	// fmt::print("## E_PDNP: {}\n", energy.E_PDNP);
+	// fmt::print("\n");
+	std::cout<<std::endl;
+	std::cout<<"Total Energy: "<<energy.total_energy().total() + energy.E_sref + energy.E_PDNA + energy.E_PDNP<<std::endl;
+	// fmt::print("TOTAL ENERGY: {}\n", energy.total_energy().total() + energy.E_sref + energy.E_PDNA + energy.E_PDNP);
 
 	return 0;
 };
