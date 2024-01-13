@@ -13,6 +13,7 @@ do
     # Check if file is a regular file and not a directory
     if [ -f "$file" ]
     then
+        echo "Processing $file"
         # Run the python script on the file
         ./build/bin/drampower_cli $file ../ddr4.json > $file.out
     fi
