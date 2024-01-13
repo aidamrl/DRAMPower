@@ -15,6 +15,6 @@ do
     then
         echo "Processing $file"
         # Run the python script on the file
-        ./build/bin/drampower_cli $file ../ddr4.json > $file.out
+        ./build/bin/drampower_cli $file ddr4.json > $file.out
     fi
 done  
