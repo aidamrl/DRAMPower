@@ -14,6 +14,6 @@ do
     if [ -f "$file" ]
     then
         # Run the python script on the file
-        ./bin/drampower_cli $file ../ddr4.json > $file.out
+        ./build/bin/drampower_cli $file ../ddr4.json > $file.out
     fi
 done  
